@@ -18,6 +18,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -219,7 +220,7 @@ public class Speed extends AppCompatActivity implements OnMapReadyCallback, Perm
         @Override
         public void onReceive(Context context, Intent intent) {
             if (("ScoreUpdates").equals(intent.getAction())){
-                int temp = (int)intent.getFloatExtra("score", 100);
+                int temp = (int)intent.getDoubleExtra("score", 100);
                 lastScore.append(Integer.toString(temp));
                 lastScore.setVisibility(View.VISIBLE);
             }
@@ -242,13 +243,22 @@ public class Speed extends AppCompatActivity implements OnMapReadyCallback, Perm
                 //tripTime.setText(Double.toString(b.getDouble("tripTime", 0)));
                 speed.setText(Integer.toString(spd));
                 acceleration.setText(Integer.toString((int)accel));
-                totalDistance.setText(Integer.toString(dist) + " ft");
+                if (dist >= 5280/4)
+                {
+                    float distf = (float)dist / 5280;
+                    totalDistance.setText(String.format("%.2f", distf) + " mi");
+                }
+                else
+                {
+                    totalDistance.setText(Integer.toString(dist) + " ft");
+                }
+
                 isEngineOn = b.getBoolean("isEngineOn", false);
 
                 if (isEngineOn)
                 {
                     lastScore.setVisibility(View.INVISIBLE);
-                    lastScore.setText("Trip Score: ");
+                    lastScore.setText("Score: ");
                 }
 
                 Log.d(TAG, "onReceive: text has been set");
@@ -285,6 +295,12 @@ public class Speed extends AppCompatActivity implements OnMapReadyCallback, Perm
                         String wpnt = Double.toString(latitude);
                         wpnt += ',' + Double.toString(longitude);
                         speedLimitRequester.sendRequest(wpnt);
+
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
 
                         if (speedLimitRequester.getSpeedLimit() > 0)
                         {
@@ -333,7 +349,7 @@ public class Speed extends AppCompatActivity implements OnMapReadyCallback, Perm
                 }
 
                 try {
-                    Thread.sleep(2000);
+                    Thread.sleep(1000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }

@@ -113,6 +113,13 @@ public class BluetoothService extends Service {
 
     boolean isDeviceVerified(String deviceAddr)
     {
+
+        try {
+            Thread.sleep(3000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
         db  = FirebaseFirestore.getInstance();
         user = FirebaseAuth.getInstance().getCurrentUser();
 
@@ -139,6 +146,7 @@ public class BluetoothService extends Service {
                             for (QueryDocumentSnapshot document : task.getResult()) {
                                 try {
                                     userInfoObject[0] = document.getData();
+                                    Log.d(TAG, "isDevice: object set");
                                 }catch (NullPointerException e) {
                                     e.printStackTrace();
                                 }
@@ -150,7 +158,13 @@ public class BluetoothService extends Service {
                     }
                 });
 
+        try {
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         HashMap userInfoHashMap = (HashMap) userInfoObject[0];
+        Log.d(TAG, "isDeviceVerified: hashmap set");
 
         try {
             if (deviceAddr.equals(userInfoHashMap.get("device_id")))

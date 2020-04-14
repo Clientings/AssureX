@@ -46,7 +46,6 @@ import static com.example.assurex.App.RD_CHANNEL_ID;
 
 public class RawDataCollectionService extends Service {
     //this boolean makes it so data collection runs without the car first having moved
-    boolean isDebugging = false;
     private final static String TAG = "RawDataCollectService";
     FirebaseFirestore db;
     FirebaseUser user;
@@ -70,6 +69,8 @@ public class RawDataCollectionService extends Service {
     int decelOverThirteen = 0;
     boolean accelEvent = false;
     int secondsSpentOverTenMPH = 0;
+    int MPHOverTen = 0;
+    boolean overTenEvent = false;
     double tAverageSpeed = 0;
     double tTopSpeed = 0;
     double tAverageAcceleration = 0;
@@ -77,10 +78,10 @@ public class RawDataCollectionService extends Service {
     double tTopAcceleration = 0;
     double tTopDeceleration = 0;
     boolean tripSummaryShouldBeSaved = false;
-    double currentTripScore = 100;
+    Double currentTripScore = 100.0;
 
-    double totalTripScore;
-    int numberOfScores;
+    Double totalTripScore;
+    long numberOfScores;
     boolean isRegistering;
     String deviceId;
     String newInsur;
@@ -102,7 +103,6 @@ public class RawDataCollectionService extends Service {
         spdreceiver = new SpeedDataReceiver();
         registerReceiver(receiver, new IntentFilter("CarDataUpdates"));
         registerReceiver(spdreceiver, new IntentFilter("MiscDataFromSpeedjava"));
-
 
         Log.d(TAG, "receiver registered");
 
@@ -168,12 +168,12 @@ public class RawDataCollectionService extends Service {
 
             while (!shouldEndService) {
                 //while engine is not on but bluetooth service is running
-                while((!isEngineOn && isServiceRunning(BluetoothService.class)) || !isDebugging){
+                while(!isEngineOn && isServiceRunning(BluetoothService.class)){
                     try { Thread.sleep(1000); } catch (InterruptedException e) { e.printStackTrace(); }
                 }
                 //while engine is on, bt service is running and the speed is still 0 indicating vehicle
                 //has yet to move
-                while(((isEngineOn && isServiceRunning(BluetoothService.class) && speedLimit <= 0 && rawSpeed == 0)) || !isDebugging){
+                while(isEngineOn && isServiceRunning(BluetoothService.class) && speedLimit <= 0 && rawSpeed == 0){
                     try { Thread.sleep(1000); } catch (InterruptedException e) { e.printStackTrace(); }
                 }
 
@@ -183,13 +183,12 @@ public class RawDataCollectionService extends Service {
                     myOriginAddress = "Unable to determine origin address";
                 }
 
-                while((isEngineOn &&  isServiceRunning(BluetoothService.class) && rawSpeed == 0) || !isDebugging){
+                while(isEngineOn &&  isServiceRunning(BluetoothService.class) && rawSpeed == 0){
                     try { Thread.sleep(1000); } catch (InterruptedException e) { e.printStackTrace(); }
                 }
 
                 //now start the collection of data if the bt service is on and the engine is on
-                if((isServiceRunning(BluetoothService.class) && isEngineOn) || isDebugging) {
-
+                if(isServiceRunning(BluetoothService.class) && isEngineOn){
                     //====GET TRIP NUMBER====
                     int tripNumber;
                     Calendar calendar = Calendar.getInstance();
@@ -223,7 +222,7 @@ public class RawDataCollectionService extends Service {
                             }
                         });
                     //sleep 1 second to hopefully prevent race conditions
-                    try { Thread.sleep(1000); } catch (InterruptedException e) { e.printStackTrace(); }
+                    try { Thread.sleep(2500); } catch (InterruptedException e) { e.printStackTrace(); }
                     //===END OF CONTACTING FIREBASE===
 
                     Object[] tempTripSummaryArray = tempTripSummaryList.toArray();
@@ -455,8 +454,15 @@ public class RawDataCollectionService extends Service {
             accelEvent = false;
         }
 
+        //attempted to implement count for each speed over 10 event
         if (speedLimit != -1) {
             if (rawSpeed > speedLimit + 10) {
+                if(!overTenEvent){
+                    MPHOverTen++;
+                    overTenEvent = true;
+                }else{
+                    overTenEvent = false;
+                }
                 secondsSpentOverTenMPH++;
             }
         } else {
@@ -467,7 +473,8 @@ public class RawDataCollectionService extends Service {
     private void tripSummaryEntryCreation(String tripId, String tsDate, int tripNumber){
         String notableTripEvents = "Times Acceleration Exceeded 9 MPH/S: " + accelOverNine + "\n" +
                                    "Times Deceleration Exceeded -13 MPH/S: " + decelOverThirteen + "\n" +
-                                   "Cumulative Time Spent 10 MPH Over Speed Limit: " + secondsSpentOverTenMPH;
+                                   "Cumulative Time Spent 10 MPH Over Speed Limit: " + secondsSpentOverTenMPH + "\n" +
+                                   "Times Speed Exceeded 10 MPH over Speed Limit: " + MPHOverTen;
 
         if(engineTroubleCodes.equals("Pending Search")){
             engineTroubleCodes = "No Trouble Codes Reported";
@@ -497,37 +504,39 @@ public class RawDataCollectionService extends Service {
                     }
                 });
 
+
+        try {
+            Thread.sleep(2500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
         HashMap userInfoHashMap = (HashMap) userInfoObject[0];
 
 
 
         // Calculate trip score
         // Default score is 100. Default score minus total events * 1000 and divide by distance of trip in miles
-        // todo: add number of speed events for total event count
-        if(!isDebugging) {
-            currentTripScore -= ((accelOverNine + decelOverThirteen) * 1000) / ((((float)dist+1) / 5280));
-            if (currentTripScore < 0)
-            {
-                currentTripScore = 0;
-            }
-            Intent sendScoreData = new Intent("ScoreUpdates");
-
-            sendScoreData.putExtra("score", currentTripScore);
-
-            sendBroadcast(sendScoreData);
-
-            Log.d(TAG, "tripSummaryEntryCreation: Score sent");
+        currentTripScore -= ((accelOverNine + decelOverThirteen + MPHOverTen) * 1000) / ((((float)dist+1) / 5280));
+        if (currentTripScore < 0)
+        {
+            currentTripScore = 0.0d;
         }
+        Intent sendScoreData = new Intent("ScoreUpdates");
+        sendScoreData.putExtra("score", currentTripScore);
+        sendBroadcast(sendScoreData);
+        Log.d(TAG, "tripSummaryEntryCreation: Score sent");
+
 
         if (userInfoHashMap != null) {
             totalTripScore = (double) userInfoHashMap.get("totalTripScore");
         }else{
-            totalTripScore = 0;
+            totalTripScore = 0.0d;
         }
         if (userInfoHashMap != null) {
-            numberOfScores = (int) userInfoHashMap.get("numberOfScores");
+            numberOfScores = (long) userInfoHashMap.get("numberOfScores");
         }else{
-            numberOfScores = 0;
+            numberOfScores = 0L;
         }
 
         totalTripScore = ((totalTripScore * numberOfScores) + currentTripScore) / (numberOfScores + 1);
@@ -553,7 +562,6 @@ public class RawDataCollectionService extends Service {
         userInfoHashMap.put("totalTripScore", totalTripScore);
         userInfoHashMap.remove("numberOfScores");
         userInfoHashMap.put("numberOfScores", numberOfScores);
-        //saving device_id to db if user is registering
 
         db.collection("users")
                 .document(uid)
@@ -562,8 +570,8 @@ public class RawDataCollectionService extends Service {
 
         //clear variables that will still contain old info if the service is still running after the end of
         //one trip and before the start of another
-        totalTripScore = 0;
-        currentTripScore = 0;
+        //totalTripScore = 0; not sure if we should actually be setting this to 0 during variable clean up
+        currentTripScore = 100.0d;
         tTopSpeed = 0;
         tTopAcceleration = 0;
         tTopDeceleration = 0;
@@ -573,6 +581,8 @@ public class RawDataCollectionService extends Service {
         decelOverThirteen = 0;
         accelEvent = false;
         secondsSpentOverTenMPH = 0;
+        overTenEvent = false;
+        MPHOverTen = 0;
         tripSummaryShouldBeSaved = false;
     }
 
@@ -611,6 +621,12 @@ public class RawDataCollectionService extends Service {
                 });
 
 
+        try {
+            Thread.sleep(250);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
         HashMap userInfoHashMap = (HashMap) userInfoObject[0];
 
         if(userInfoHashMap == null){
@@ -620,8 +636,8 @@ public class RawDataCollectionService extends Service {
         userInfoHashMap.put("full_name", newUser);
         userInfoHashMap.put("device_id", deviceId);
         userInfoHashMap.put("new_insur", newInsur);
-        userInfoHashMap.put("totalTripScore", 0);
-        userInfoHashMap.put("numberOfScores", 0);
+        userInfoHashMap.put("totalTripScore", 100.0d);
+        userInfoHashMap.put("numberOfScores", 0L);
 
         db.collection("users")
                 .document(uid)

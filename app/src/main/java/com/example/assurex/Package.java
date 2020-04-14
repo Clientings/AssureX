@@ -35,8 +35,8 @@ import java.util.TimerTask;
 public class Package extends AppCompatActivity {
 
     private final static String TAG = "Package";
-    FirebaseFirestore db;
-    private double totalTripScore;
+
+    double totalTripScore;
     private TextView conditionText;
 
 
@@ -88,6 +88,49 @@ public class Package extends AppCompatActivity {
         //company.setText("");
         //startDate.setText("");
 
+        //for database
+        FirebaseFirestore db;
+        db = FirebaseFirestore.getInstance();
+        FirebaseUser user;
+        String uid;
+        user = FirebaseAuth.getInstance().getCurrentUser();
+
+        if (user != null) {
+            // User is signed in
+            //uid = user.getUid();
+            uid = user.getEmail();
+        } else {
+            // No user is signed in
+            uid = "debug_user";
+            Log.d(TAG, "Error. No User appears to be signed in");
+        }
+
+        final Object[] userInfoObject = new Object[1];
+
+        db.collection("users")
+                .document(uid)
+                .collection("userinfo")
+                .get()
+                .addOnCompleteListener(new OnCompleteListener<QuerySnapshot>() {
+                    @Override
+                    public void onComplete(@NonNull Task<QuerySnapshot> task) {
+                        if (task.isSuccessful()) {
+                            for (QueryDocumentSnapshot document : task.getResult()) {
+                                try {
+                                    userInfoObject[0] = document.getData();
+                                    HashMap userInfoHashMap = (HashMap) userInfoObject[0];
+                                    company.setText((String) userInfoHashMap.get("new_insur"));
+                                    totalTripScore = (double) userInfoHashMap.get("totalTripScore");
+                                }catch (NullPointerException e) {
+                                    e.printStackTrace();
+                                }
+                                Log.d(TAG, document.getId() + " => " + document.getData());
+                            }
+                        } else {
+                            Log.d(TAG, "Error getting documents: ", task.getException());
+                        }
+                    }
+                });
 
     }//end onCreate
 
@@ -153,8 +196,6 @@ public class Package extends AppCompatActivity {
 
     public void prog() {
 
-        //test location
-        totalTripScore = getScoreFromFirebase();
 
         conditionText.setVisibility(View.VISIBLE);
 
@@ -194,63 +235,8 @@ public class Package extends AppCompatActivity {
 
     }//and prog
 
-    private double getScoreFromFirebase() {
-        FirebaseUser user;
-        String uid;
-
-        user = FirebaseAuth.getInstance().getCurrentUser();
-
-        if (user != null) {
-            // User is signed in
-            //uid = user.getUid();
-            uid = user.getEmail();
-        } else {
-            // No user is signed in
-            uid = "debug_user";
-            Log.d(TAG, "Error. No User appears to be signed in");
-        }
-
-        final Object[] userInfoObject = new Object[1];
-
-        db.collection("users")
-                .document(uid)
-                .collection("userinfo")
-                .get()
-                .addOnCompleteListener(new OnCompleteListener<QuerySnapshot>() {
-                    @Override
-                    public void onComplete(@NonNull Task<QuerySnapshot> task) {
-                        if (task.isSuccessful()) {
-                            for (QueryDocumentSnapshot document : task.getResult()) {
-                                try {
-                                    userInfoObject[0] = document.getData();
-                                }catch (NullPointerException e) {
-                                    e.printStackTrace();
-                                }
-                                Log.d(TAG, document.getId() + " => " + document.getData());
-                            }
-                        } else {
-                            Log.d(TAG, "Error getting documents: ", task.getException());
-                        }
-                    }
-                });
-
-        HashMap userInfoHashMap = (HashMap) userInfoObject[0];
-        try{
-            double totalTripScore = (double) userInfoHashMap.get("totalTripScore");
-            return totalTripScore;
-        }
-        catch(NullPointerException e){
-            double totalTripScore = -1;
-            e.printStackTrace();
-            return totalTripScore;
-        }
-    }
-
 
     public void getTotalTripScore(View view) {
-
-        //for database
-        db = FirebaseFirestore.getInstance();
 
         //make button invisible
         tripScore.setVisibility(view.GONE);

@@ -31,6 +31,7 @@ import com.example.assurex.model.TripSummary;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 import com.google.firebase.firestore.QuerySnapshot;
@@ -125,6 +126,8 @@ public class infoPage extends AppCompatActivity implements AdapterView.OnItemSel
     boolean FirebaseTripSummaryQueryIsCompleted = false;
     boolean FirebaseRawDataItemQueryIsCompleted = false;
     FirebaseFirestore db;
+    FirebaseUser user;
+    String uid;
     String dbQueryDate;
     String tEngineTroubleCodes;
     double tTopSpeed = 0;
@@ -145,6 +148,11 @@ public class infoPage extends AppCompatActivity implements AdapterView.OnItemSel
     private double[] firstLocationArray = new double[2];
     private static LatLng locationOne = new LatLng();
     private static LatLng locationTwo = new LatLng();
+
+    //route camera centering
+    private double routeCenterLat = 0.0d;
+    private double routeCenterLng = 0.0d;
+    private int myCount = 0;
 
 
     @Override
@@ -168,6 +176,18 @@ public class infoPage extends AppCompatActivity implements AdapterView.OnItemSel
         setContentView(R.layout.activity_info_page);
         //db = AppDatabase.getInstance(this);
         db = FirebaseFirestore.getInstance();
+        user = FirebaseAuth.getInstance().getCurrentUser();
+
+        if (user != null) {
+            // User is signed in
+            //uid = user.getUid();
+            uid = user.getEmail();
+        } else {
+            // No user is signed in
+            uid = "debug_user";
+            Log.d(TAG, "Error. No User appears to be signed in");
+        }
+
         rdreceiver = new RawDataReceiver();
         registerReceiver(rdreceiver, new IntentFilter("DataCollectedInfo"));
 
@@ -213,6 +233,8 @@ public class infoPage extends AppCompatActivity implements AdapterView.OnItemSel
         locText = findViewById(R.id.locText);
 
 
+
+
         //calender
         Calendar calendar = Calendar.getInstance();
         SimpleDateFormat mdformat = new SimpleDateFormat("MM - dd - yyyy ");
@@ -245,7 +267,7 @@ public class infoPage extends AppCompatActivity implements AdapterView.OnItemSel
         Toast.makeText(this, "Called getMapAsync", Toast.LENGTH_SHORT).show();
 
         //update at start
-        updateData();
+        //updateData();
 
     }//end onCreate
 
@@ -415,7 +437,7 @@ public class infoPage extends AppCompatActivity implements AdapterView.OnItemSel
         tempTripSummaryList.clear();
 
         db.collection("users")
-                .document("debug_user")
+                .document(uid)
                 .collection("tripsummaries")
                 .whereEqualTo("date", dbQueryDate)
                 .get()
@@ -479,7 +501,7 @@ public class infoPage extends AppCompatActivity implements AdapterView.OnItemSel
                     tempRawDataItemList.clear();
 
                     db.collection("users")
-                            .document("debug_user")
+                            .document(uid)
                             .collection("rawdataitems")
                             .document(dbQueryDate)
                             .collection("Trip Number " + mapSelectedTripSummary.get("tripNumber"))
@@ -500,6 +522,12 @@ public class infoPage extends AppCompatActivity implements AdapterView.OnItemSel
                                         Log.d(TAG, "Error getting documents: ", task.getException());
                                     }
 
+                                    try {
+                                        Thread.sleep(2500);
+                                    } catch (InterruptedException e) {
+                                        e.printStackTrace();
+                                    }
+
                                     if(tempRawDataItemList != null){
                                         if(!tempRawDataItemList.isEmpty()){
                                             tempRawDataItemArray = tempRawDataItemList.toArray();
@@ -510,20 +538,26 @@ public class infoPage extends AppCompatActivity implements AdapterView.OnItemSel
                                         routeCoordinates = new ArrayList<>();
                                         for(int i = 0; i < tempRawDataItemArray.length; i++){
                                             HashMap mapTempRawDataItem = (HashMap) tempRawDataItemArray[i];
-                                            routeCoordinates.add(Point.fromLngLat((double) mapTempRawDataItem.get("longitude"),(double) mapTempRawDataItem.get("latitude") ));
+                                            //if neither latitude nor longitude are 0, indicating it contains actual coordinates
+                                            if(( (double)mapTempRawDataItem.get("longitude") != (double) 0) && (double)mapTempRawDataItem.get("latitude") != (double) 0){
+                                                routeCoordinates.add(Point.fromLngLat((double) mapTempRawDataItem.get("longitude"),(double) mapTempRawDataItem.get("latitude") ));
+
+                                                routeCenterLat += (double) mapTempRawDataItem.get("latitude");
+                                                routeCenterLng += (double) mapTempRawDataItem.get("longitude");
+                                                myCount++;
+
+                                                if (isFirstLocation == true) {
+                                                    firstLocationArray[0] = (double)mapTempRawDataItem.get("latitude");
+                                                    firstLocationArray[1] = (double) mapTempRawDataItem.get("longitude");
+                                                    locationOne = new LatLng((double)mapTempRawDataItem.get("latitude"), (double) mapTempRawDataItem.get("longitude"));
+                                                    isFirstLocation = false;
+                                                }//find where camera should look
+                                                if (i==tempRawDataItemArray.length-1) {
+                                                    locationTwo = new LatLng((double)mapTempRawDataItem.get("latitude"), (double) mapTempRawDataItem.get("longitude"));
+                                                }//find where camera should look
 
 
-                                            if (isFirstLocation == true) {
-                                                firstLocationArray[0] = (double)mapTempRawDataItem.get("longitude");
-                                                firstLocationArray[1] = (double) mapTempRawDataItem.get("latitude");
-                                                locationOne = new LatLng((double)mapTempRawDataItem.get("longitude"), (double) mapTempRawDataItem.get("latitude"));
-                                                isFirstLocation = false;
-                                            }//find where camera should look
-                                            if (i==tempRawDataItemArray.length-1) {
-                                                locationTwo = new LatLng((double)mapTempRawDataItem.get("longitude"), (double) mapTempRawDataItem.get("latitude"));
-                                            }//find where camera should look
-
-
+                                            }
                                         }
                                     }
 
@@ -775,45 +809,56 @@ public class infoPage extends AppCompatActivity implements AdapterView.OnItemSel
         mapView = findViewById(R.id.mapView);
 
         //mapView.onCreate(savedInstanceState);
-        mapView.getMapAsync(new OnMapReadyCallback() {
-            @Override
-            public void onMapReady(@NonNull final MapboxMap mapboxMap) {
 
-                mapboxMap.setStyle(Style.OUTDOORS, new Style.OnStyleLoaded() {
+        //if the route coordinates array isn't a null pointer
+        if (routeCoordinates != null) {
+            //if the route coordinates array isn't empty
+            if (!routeCoordinates.isEmpty()) {
+                mapView.getMapAsync(new OnMapReadyCallback() {
                     @Override
-                    public void onStyleLoaded(@NonNull Style style) {
+                    public void onMapReady(@NonNull final MapboxMap mapboxMap) {
 
-                        // Create the LineString from the list of coordinates and then make a GeoJSON
-                        // FeatureCollection so we can add the line to our map as a layer.
-                        style.addSource(new GeoJsonSource("line-source",
-                                FeatureCollection.fromFeatures(new Feature[] {Feature.fromGeometry(
-                                        LineString.fromLngLats(routeCoordinates)
-                                )})));
+                        mapboxMap.setStyle(Style.OUTDOORS, new Style.OnStyleLoaded() {
+                            @Override
+                            public void onStyleLoaded(@NonNull Style style) {
 
-                        // The layer properties for our line. This is where we make the line dotted, set the
-                        // color, etc.
-                        style.addLayer(new LineLayer("linelayer", "line-source").withProperties(
-                                PropertyFactory.lineDasharray(new Float[] {0.01f, 2f}),
-                                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
-                                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
-                                PropertyFactory.lineWidth(5f),
-                                PropertyFactory.lineColor(Color.parseColor("#e55e5e"))
-                        ));
+                                // Create the LineString from the list of coordinates and then make a GeoJSON
+                                // FeatureCollection so we can add the line to our map as a layer.
+                                style.addSource(new GeoJsonSource("line-source",
+                                        FeatureCollection.fromFeatures(new Feature[] {Feature.fromGeometry(
+                                                LineString.fromLngLats(routeCoordinates)
+                                        )})));
 
-                        CameraPosition position = new CameraPosition.Builder()
-                                .target(new LatLng(firstLocationArray[0], firstLocationArray[1])) // Sets the new camera position
-                                .zoom(14) // Sets the zoom
-                                .bearing(0) // Rotate the camera/
-                                .tilt(30) // Set the camera tilt
-                                .build(); // Creates a CameraPosition from the builder
+                                // The layer properties for our line. This is where we make the line dotted, set the
+                                // color, etc.
+                                style.addLayer(new LineLayer("linelayer", "line-source").withProperties(
+                                        PropertyFactory.lineDasharray(new Float[] {0.01f, 2f}),
+                                        PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                                        PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+                                        PropertyFactory.lineWidth(5f),
+                                        PropertyFactory.lineColor(Color.parseColor("#e55e5e"))
+                                ));
 
-                        mapboxMap.animateCamera(CameraUpdateFactory.newCameraPosition(position), 7000);
+                                firstLocationArray[0] = routeCenterLat / myCount;
+                                firstLocationArray[1] = routeCenterLng / myCount;
+                                Log.d(TAG, "onStyleLoaded: Lat: " + (routeCenterLat/myCount) + " lng: " + (routeCenterLng/myCount));
+                                Log.d(TAG, "onStyleLoaded: Default: lat: " + firstLocationArray[0] + " lng: " + firstLocationArray[1]);
+                                CameraPosition position = new CameraPosition.Builder()
+                                        .target(new LatLng(firstLocationArray[0], firstLocationArray[1])) // Sets the new camera position
+                                        .zoom(13) // Sets the zoom
+                                        .bearing(0) // Rotate the camera/
+                                        .tilt(0) // Set the camera tilt
+                                        .build(); // Creates a CameraPosition from the builder
 
+                                mapboxMap.animateCamera(CameraUpdateFactory.newCameraPosition(position), 7000);
+
+                            }
+
+                        });
                     }
-
                 });
             }
-        });
+        }
 
         //mapboxMap.setCameraPosition(firstLocationArray[0], firstLocationArray[1]);
         /*
