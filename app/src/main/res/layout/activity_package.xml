@@ -207,7 +207,7 @@
                 android:layout_gravity="center"
                 android:gravity="center"
                 android:background="@drawable/bg_button_white"
-                android:text="What is my Standing?"
+                android:text="Fetch Data"
                 android:textSize="13dp"
                 android:layout_marginTop="10dp"
                 android:paddingLeft="10dp"
